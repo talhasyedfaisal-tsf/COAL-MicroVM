@@ -1,0 +1,24 @@
+# Visual Studio build output
+[Bb]in/
+[Oo]bj/
+Debug/
+Release/
+x64/
+x86/
+*.exe
+*.obj
+*.ilk
+*.pdb
+*.idb
+*.suo
+*.user
+*.opensdf
+*.sdf
+*.VC.db
+.vs/
+
+# macOS
+.DS_Store
+
+# Editors
+.vscode/
