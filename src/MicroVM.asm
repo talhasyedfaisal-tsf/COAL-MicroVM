@@ -23,6 +23,9 @@ JumpTarget DWORD 0
 InvalidOpcodeValue DWORD 0
 CycleCount DWORD 0
 CycleLimit DWORD 1000
+StepMode BYTE 0
+TraceFileHandle DWORD 0
+TraceBuffer DWORD 0, 0, 0, 0
 
 TitleText BYTE "Software CPU Emulator (Micro-VM)", 0
 RunningText BYTE "Execution started", 0
@@ -38,6 +41,10 @@ InvalidTargetText BYTE "Invalid jump target: ", 0
 MissingOperandText BYTE "Error: Missing operand.", 0
 MissingHaltText BYTE "Error: Program ended without HALT.", 0
 CycleLimitText BYTE "Error: Execution cycle limit reached.", 0
+ModeText BYTE "Execution mode: 1 = Auto, 2 = Step: ", 0
+StepText BYTE "Press S for step, R for run, or Q for quit.", 0
+TraceFileName BYTE "MicroVM_trace.bin", 0
+TraceSavedText BYTE "Execution trace saved to MicroVM_trace.bin", 0
 
 OP_ADD EQU 10h
 OP_SUB EQU 20h
@@ -175,10 +182,60 @@ TraceState PROC
     call Crlf
     call Crlf
 
+    cmp StepMode, 0
+    je TraceDone
+StepWait:
+    mov edx, OFFSET StepText
+    call WriteString
+    call Crlf
+    call ReadChar
+    and al, 0DFh
+    cmp al, 'S'
+    je TraceDone
+    cmp al, 'R'
+    je RunFromStep
+    cmp al, 'Q'
+    jne StepWait
+    popad
+    exit
+RunFromStep:
+    mov StepMode, 0
+TraceDone:
     popad
     ret
 TraceState ENDP
 
+
+SaveTrace PROC
+    mov eax, VirtualAccumulator
+    mov TraceBuffer, eax
+    mov eax, VirtualBaseRegister
+    mov [TraceBuffer+4], eax
+    mov eax, VirtualInstructionPointer
+    mov [TraceBuffer+8], eax
+    movzx eax, BYTE PTR VirtualZeroFlag
+    mov [TraceBuffer+12], eax
+
+    mov edx, OFFSET TraceFileName
+    call CreateOutputFile
+    cmp eax, INVALID_HANDLE_VALUE
+    je TraceSaveDone
+
+    mov TraceFileHandle, eax
+    mov edx, OFFSET TraceBuffer
+    mov ecx, 16
+    mov eax, TraceFileHandle
+    call WriteToFile
+
+    mov eax, TraceFileHandle
+    call CloseFile
+
+    mov edx, OFFSET TraceSavedText
+    call WriteString
+    call Crlf
+TraceSaveDone:
+    ret
+SaveTrace ENDP
 
 main PROC
     call Clrscr
@@ -190,6 +247,15 @@ main PROC
     mov edx, OFFSET RunningText
     call WriteString
     call Crlf
+
+    mov edx, OFFSET ModeText
+    call WriteString
+    call ReadInt
+    mov StepMode, 0
+    cmp eax, 2
+    jne StartExecution
+    mov StepMode, 1
+StartExecution:
     call Crlf
 
     mov esi, OFFSET Bytecode
@@ -458,6 +524,8 @@ ProgramComplete:
     movzx eax, BYTE PTR VirtualZeroFlag
     call WriteDec
     call Crlf
+
+    call SaveTrace
 
     exit
 

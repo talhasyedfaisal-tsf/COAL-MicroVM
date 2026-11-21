@@ -17,8 +17,10 @@ Group 4, BCS-3E
 | SUB | Reads an operand and subtracts it from the virtual Accumulator |
 | HALT | Stops execution and prints the virtual CPU state |
 | Console output | Prints Accumulator, Base Register, and instruction pointer |
+| Step/run debugger | Runs automatically or pauses after traced cycles |
+| File trace export | Saves final CPU state as 16 binary bytes in `MicroVM_trace.bin` |
 
-Waseem will add the proposed control-flow and tracer extensions after this core is pushed and tested.
+The merged project also includes a step/run debugger and final execution-trace file export.
 
 ## Repository Layout
 
