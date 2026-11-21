@@ -21,6 +21,8 @@ VirtualZeroFlag BYTE 1
 
 JumpTarget DWORD 0
 InvalidOpcodeValue DWORD 0
+CycleCount DWORD 0
+CycleLimit DWORD 1000
 
 TitleText BYTE "Software CPU Emulator (Micro-VM)", 0
 RunningText BYTE "Execution started", 0
@@ -35,6 +37,7 @@ InvalidText BYTE "Invalid opcode: ", 0
 InvalidTargetText BYTE "Invalid jump target: ", 0
 MissingOperandText BYTE "Error: Missing operand.", 0
 MissingHaltText BYTE "Error: Program ended without HALT.", 0
+CycleLimitText BYTE "Error: Execution cycle limit reached.", 0
 
 OP_ADD EQU 10h
 OP_SUB EQU 20h
@@ -84,8 +87,6 @@ ExecuteSUB ENDP
 
 ValidateTarget PROC
     push ebx
-    push ecx
-    push edx
     push edi
 
     mov ebx, JumpTarget
@@ -104,36 +105,30 @@ ValidateLoop:
     cmp edi, BytecodeLength
     jae InvalidTarget
 
-    movzx edx, BYTE PTR [Bytecode+edi]
+    movzx eax, BYTE PTR [Bytecode+edi]
 
-    cmp dl, OP_HALT
-    je InvalidTarget
+    cmp al, OP_ADD
+    je TargetTwoByte
+    cmp al, OP_SUB
+    je TargetTwoByte
+    cmp al, OP_JMP
+    je TargetTwoByte
+    cmp al, OP_JE
+    je TargetTwoByte
+    cmp al, OP_JNE
+    je TargetTwoByte
 
-    cmp dl, OP_ADD
-    je TwoByteInstruction
-
-    cmp dl, OP_SUB
-    je TwoByteInstruction
-
-    cmp dl, OP_JMP
-    je TwoByteInstruction
-
-    cmp dl, OP_JE
-    je TwoByteInstruction
-
-    cmp dl, OP_JNE
-    je TwoByteInstruction
+    cmp al, OP_HALT
+    je TargetOneByte
 
     jmp InvalidTarget
 
-TwoByteInstruction:
-    mov ecx, edi
-    inc ecx
-
-    cmp ecx, BytecodeLength
-    jae InvalidTarget
-
+TargetTwoByte:
     add edi, 2
+    jmp ValidateLoop
+
+TargetOneByte:
+    inc edi
     jmp ValidateLoop
 
 ValidTarget:
@@ -145,8 +140,6 @@ InvalidTarget:
 
 ValidationDone:
     pop edi
-    pop edx
-    pop ecx
     pop ebx
     ret
 ValidateTarget ENDP
@@ -154,6 +147,8 @@ ValidateTarget ENDP
 
 TraceState PROC
     pushad
+
+    inc CycleCount
 
     mov edx, OFFSET AccumulatorText
     call WriteString
@@ -203,9 +198,14 @@ main PROC
     mov VirtualBaseRegister, 0
     mov VirtualInstructionPointer, 0
     mov VirtualZeroFlag, 1
+    mov CycleCount, 0
 
 
 FetchDecodeExecute:
+    mov eax, CycleCount
+    cmp eax, CycleLimit
+    jae CycleLimitReached
+
     mov eax, esi
     sub eax, OFFSET Bytecode
 
@@ -320,13 +320,13 @@ HandleJE:
     movzx eax, al
     mov JumpTarget, eax
 
+    cmp VirtualZeroFlag, 1
+    jne JENotTaken
+
     call ValidateTarget
 
     cmp eax, 1
     jne InvalidJump
-
-    cmp VirtualZeroFlag, 1
-    jne JENotTaken
 
     mov esi, OFFSET Bytecode
     add esi, JumpTarget
@@ -359,11 +359,6 @@ HandleJNE:
     movzx eax, al
     mov JumpTarget, eax
 
-    call ValidateTarget
-
-    cmp eax, 1
-    jne InvalidJump
-
     cmp VirtualZeroFlag, 0
     je JNETaken
 
@@ -376,6 +371,11 @@ HandleJNE:
 
 
 JNETaken:
+    call ValidateTarget
+
+    cmp eax, 1
+    jne InvalidJump
+
     mov esi, OFFSET Bytecode
     add esi, JumpTarget
 
@@ -416,6 +416,14 @@ MissingOperand:
 
 MissingHalt:
     mov edx, OFFSET MissingHaltText
+    call WriteString
+    call Crlf
+
+    exit
+
+
+CycleLimitReached:
+    mov edx, OFFSET CycleLimitText
     call WriteString
     call Crlf
 
