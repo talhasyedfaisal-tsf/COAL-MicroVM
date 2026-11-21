@@ -11,7 +11,7 @@ INCLUDE Irvine32.inc
 
 .data
 
-Bytecode BYTE 10h, 5, 30h, 8, 20h, 2, 40h, 10, 10h, 3, 0FFh
+Bytecode BYTE 10h, 5, 20h, 5, 40h, 8, 10h, 99, 10h, 3, 50h, 14, 10h, 88, 20h, 3, 50h, 20, 10h, 2, 40h, 24, 30h, 24, 0FFh
 BytecodeLength DWORD ($ - Bytecode)
 
 VirtualAccumulator DWORD 0
@@ -40,29 +40,19 @@ OP_ADD EQU 10h
 OP_SUB EQU 20h
 OP_JMP EQU 30h
 OP_JE EQU 40h
+OP_JNE EQU 50h
 OP_HALT EQU 0FFh
 
 .code
 
-; --------------------------------
-; FETCH NEXT BYTE
-; --------------------------------
-
 FetchNext PROC
-
     mov al, [esi]
     inc esi
     ret
-
 FetchNext ENDP
 
 
-; --------------------------------
-; EXECUTE ADD
-; --------------------------------
-
 ExecuteADD PROC
-
     push ebx
 
     movzx ebx, al
@@ -74,16 +64,10 @@ ExecuteADD PROC
 
     pop ebx
     ret
-
 ExecuteADD ENDP
 
 
-; --------------------------------
-; EXECUTE SUB
-; --------------------------------
-
 ExecuteSUB PROC
-
     push ebx
 
     movzx ebx, al
@@ -95,17 +79,10 @@ ExecuteSUB PROC
 
     pop ebx
     ret
-
 ExecuteSUB ENDP
 
 
-; --------------------------------
-; VALIDATE JUMP TARGET
-; Target must be an instruction boundary.
-; --------------------------------
-
 ValidateTarget PROC
-
     push ebx
     push ecx
     push edx
@@ -119,7 +96,6 @@ ValidateTarget PROC
     xor edi, edi
 
 ValidateLoop:
-
     cmp edi, ebx
     je ValidTarget
 
@@ -145,10 +121,12 @@ ValidateLoop:
     cmp dl, OP_JE
     je TwoByteInstruction
 
+    cmp dl, OP_JNE
+    je TwoByteInstruction
+
     jmp InvalidTarget
 
 TwoByteInstruction:
-
     mov ecx, edi
     inc ecx
 
@@ -159,58 +137,44 @@ TwoByteInstruction:
     jmp ValidateLoop
 
 ValidTarget:
-
     mov eax, 1
     jmp ValidationDone
 
 InvalidTarget:
-
     mov eax, 0
 
 ValidationDone:
-
     pop edi
     pop edx
     pop ecx
     pop ebx
-
     ret
-
 ValidateTarget ENDP
 
 
-; --------------------------------
-; LIVE DIAGNOSTIC TRACER
-; --------------------------------
-
 TraceState PROC
-
     pushad
 
-    mov edx, AccumulatorText
+    mov edx, OFFSET AccumulatorText
     call WriteString
-
     mov eax, VirtualAccumulator
     call WriteDec
     call Crlf
 
-    mov edx, BaseText
+    mov edx, OFFSET BaseText
     call WriteString
-
     mov eax, VirtualBaseRegister
     call WriteDec
     call Crlf
 
-    mov edx, InstructionText
+    mov edx, OFFSET InstructionText
     call WriteString
-
     mov eax, VirtualInstructionPointer
     call WriteDec
     call Crlf
 
-    mov edx, ZeroFlagText
+    mov edx, OFFSET ZeroFlagText
     call WriteString
-
     movzx eax, BYTE PTR VirtualZeroFlag
     call WriteDec
     call Crlf
@@ -218,16 +182,10 @@ TraceState PROC
 
     popad
     ret
-
 TraceState ENDP
 
 
-; --------------------------------
-; MAIN PROGRAM
-; --------------------------------
-
 main PROC
-
     call Clrscr
 
     mov edx, OFFSET TitleText
@@ -246,12 +204,8 @@ main PROC
     mov VirtualInstructionPointer, 0
     mov VirtualZeroFlag, 1
 
-; --------------------------------
-; FETCH-DECODE-EXECUTE LOOP
-; --------------------------------
 
 FetchDecodeExecute:
-
     mov eax, esi
     sub eax, OFFSET Bytecode
 
@@ -272,6 +226,9 @@ FetchDecodeExecute:
     cmp al, OP_JE
     je HandleJE
 
+    cmp al, OP_JNE
+    je HandleJNE
+
     cmp al, OP_HALT
     je HandleHalt
 
@@ -288,12 +245,7 @@ FetchDecodeExecute:
     exit
 
 
-; --------------------------------
-; HANDLE ADD
-; --------------------------------
-
 HandleAdd:
-
     mov eax, esi
     sub eax, OFFSET Bytecode
 
@@ -308,16 +260,10 @@ HandleAdd:
     mov VirtualInstructionPointer, eax
 
     call TraceState
-
     jmp FetchDecodeExecute
 
 
-; --------------------------------
-; HANDLE SUB
-; --------------------------------
-
 HandleSub:
-
     mov eax, esi
     sub eax, OFFSET Bytecode
 
@@ -332,16 +278,10 @@ HandleSub:
     mov VirtualInstructionPointer, eax
 
     call TraceState
-
     jmp FetchDecodeExecute
 
 
-; --------------------------------
-; HANDLE JMP
-; --------------------------------
-
 HandleJmp:
-
     mov eax, esi
     sub eax, OFFSET Bytecode
 
@@ -365,16 +305,10 @@ HandleJmp:
     mov VirtualInstructionPointer, eax
 
     call TraceState
-
     jmp FetchDecodeExecute
 
 
-; --------------------------------
-; HANDLE JE
-; --------------------------------
-
 HandleJE:
-
     mov eax, esi
     sub eax, OFFSET Bytecode
 
@@ -401,43 +335,67 @@ HandleJE:
     mov VirtualInstructionPointer, eax
 
     call TraceState
-
     jmp FetchDecodeExecute
 
 
 JENotTaken:
-
     mov eax, esi
     sub eax, OFFSET Bytecode
     mov VirtualInstructionPointer, eax
 
     call TraceState
-
     jmp FetchDecodeExecute
 
 
-; --------------------------------
-; HANDLE HALT
-; --------------------------------
-
-HandleHalt:
-
+HandleJNE:
     mov eax, esi
     sub eax, OFFSET Bytecode
 
+    cmp eax, BytecodeLength
+    jae MissingOperand
+
+    call FetchNext
+
+    movzx eax, al
+    mov JumpTarget, eax
+
+    call ValidateTarget
+
+    cmp eax, 1
+    jne InvalidJump
+
+    cmp VirtualZeroFlag, 0
+    je JNETaken
+
+    mov eax, esi
+    sub eax, OFFSET Bytecode
     mov VirtualInstructionPointer, eax
 
     call TraceState
+    jmp FetchDecodeExecute
 
+
+JNETaken:
+    mov esi, OFFSET Bytecode
+    add esi, JumpTarget
+
+    mov eax, JumpTarget
+    mov VirtualInstructionPointer, eax
+
+    call TraceState
+    jmp FetchDecodeExecute
+
+
+HandleHalt:
+    mov eax, esi
+    sub eax, OFFSET Bytecode
+    mov VirtualInstructionPointer, eax
+
+    call TraceState
     jmp ProgramComplete
 
 
-; --------------------------------
-; ERROR HANDLERS
-; --------------------------------
-
 InvalidJump:
-
     mov edx, OFFSET InvalidTargetText
     call WriteString
 
@@ -449,7 +407,6 @@ InvalidJump:
 
 
 MissingOperand:
-
     mov edx, OFFSET MissingOperandText
     call WriteString
     call Crlf
@@ -458,7 +415,6 @@ MissingOperand:
 
 
 MissingHalt:
-
     mov edx, OFFSET MissingHaltText
     call WriteString
     call Crlf
@@ -466,14 +422,33 @@ MissingHalt:
     exit
 
 
-; --------------------------------
-; PROGRAM COMPLETE
-; --------------------------------
-
 ProgramComplete:
-
     mov edx, OFFSET HaltedText
     call WriteString
+    call Crlf
+
+    mov edx, OFFSET AccumulatorText
+    call WriteString
+    mov eax, VirtualAccumulator
+    call WriteDec
+    call Crlf
+
+    mov edx, OFFSET BaseText
+    call WriteString
+    mov eax, VirtualBaseRegister
+    call WriteDec
+    call Crlf
+
+    mov edx, OFFSET InstructionText
+    call WriteString
+    mov eax, VirtualInstructionPointer
+    call WriteDec
+    call Crlf
+
+    mov edx, OFFSET ZeroFlagText
+    call WriteString
+    movzx eax, BYTE PTR VirtualZeroFlag
+    call WriteDec
     call Crlf
 
     exit
