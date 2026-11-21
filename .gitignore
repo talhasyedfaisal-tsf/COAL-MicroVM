@@ -20,5 +20,8 @@ x86/
 # macOS
 .DS_Store
 
+# Submission packaging
+submission/
+
 # Editors
 .vscode/
